@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Tests (solo para uso local, no se distribuyen)
+Tests/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Trazas generadas
+TraceLoader/Traces/
+*.json
+!Game/test_game_fixed.json
+
+# Debug/audit
+Game/debug_server.py
+Game/trace_auditor.py
+Game/agent_traces/
+logs/
+
+# Resultados de entrenamiento y ficheros personales
+resultados_*/
+best_chromosome*.json
+*_training_log*
+training_output.log
+entrenador_*.py
+experimentador_*.py
+graficador_*.py
+Agents/edge_case_detector.py
