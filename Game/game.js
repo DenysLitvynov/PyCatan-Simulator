@@ -1082,14 +1082,28 @@ function applyCommerce(data) {
             const ratio = trade.trade_ratio || 4;
             const givesStr = formatTradeOffer(trade.trade_offer.gives, ratio);
             const recvStr = formatTradeOffer(trade.trade_offer.receives, 1);
-            addLog(
-                `<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> comercia con ${ratio === 4 ? 'banca (4:1)' : ratio === 3 ? 'puerto (3:1)' : 'puerto especial (2:1)'} — Da: ${givesStr} → Recibe: ${recvStr}`,
-                'log-trade'
-            );
-            addCommerceLog(
-                `<span class="commerce-header">Comercio ${ratio}:1</span><br>` +
-                `<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> da ${givesStr} y recibe ${recvStr}`
-            );
+            const rejected = trade.answer === false;
+            const location = ratio === 4 ? 'banca (4:1)' : ratio === 3 ? 'puerto (3:1)' : 'puerto especial (2:1)';
+            if (rejected) {
+                const reason = trade.error_msg ? ` (${trade.error_msg})` : '';
+                addLog(
+                    `<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> intenta comerciar con ${location} — Da: ${givesStr} → Pide: ${recvStr} — <em class="trade-inviable">Rechazado${reason}</em>`,
+                    'log-trade log-warning'
+                );
+                addCommerceLog(
+                    `<span class="commerce-header">Comercio ${ratio}:1 rechazado</span><br>` +
+                    `<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> quería dar ${givesStr} por ${recvStr}${reason}`
+                );
+            } else {
+                addLog(
+                    `<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> comercia con ${location} — Da: ${givesStr} → Recibe: ${recvStr}`,
+                    'log-trade'
+                );
+                addCommerceLog(
+                    `<span class="commerce-header">Comercio ${ratio}:1</span><br>` +
+                    `<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> da ${givesStr} y recibe ${recvStr}`
+                );
+            }
         } else {
             // Player trade
             const gives = formatTradeResources(trade.trade_offer.gives);
@@ -1545,7 +1559,13 @@ function applyCommerceLog(data) {
         if (typeof trade.trade_offer !== 'object') return;
         if (trade.harbor_trade || typeof trade.trade_offer.gives === 'number') {
             const ratio = trade.trade_ratio || 4;
-            addLog(`<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> comercia con ${ratio === 4 ? 'banca' : 'puerto'} (${ratio}:1) — Da: ${formatTradeOffer(trade.trade_offer.gives, ratio)} → Recibe: ${formatTradeOffer(trade.trade_offer.receives, 1)}`, 'log-trade');
+            const rejected = trade.answer === false;
+            if (rejected) {
+                const reason = trade.error_msg ? ` (${trade.error_msg})` : '';
+                addLog(`<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> intenta comerciar con ${ratio === 4 ? 'banca' : 'puerto'} (${ratio}:1) — Da: ${formatTradeOffer(trade.trade_offer.gives, ratio)} → Pide: ${formatTradeOffer(trade.trade_offer.receives, 1)} — <em class="trade-inviable">Rechazado${reason}</em>`, 'log-trade log-warning');
+            } else {
+                addLog(`<span class="pname-${activePlayer}">${PLAYER_NAMES[activePlayer]}</span> comercia con ${ratio === 4 ? 'banca' : 'puerto'} (${ratio}:1) — Da: ${formatTradeOffer(trade.trade_offer.gives, ratio)} → Recibe: ${formatTradeOffer(trade.trade_offer.receives, 1)}`, 'log-trade');
+            }
         } else {
             const gives = formatTradeResources(trade.trade_offer.gives);
             const receives = formatTradeResources(trade.trade_offer.receives);

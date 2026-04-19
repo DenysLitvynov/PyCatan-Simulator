@@ -42,3 +42,6 @@ Agents/edge_case_detector.py
 
 # Agente propio — NO se sube al repositorio
 Agents/RivasMedinaAgent.py
+
+# Infraestructura de clúster (uso privado, paths específicos del usuario)
+cluster/

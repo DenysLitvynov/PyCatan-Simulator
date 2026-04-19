@@ -397,24 +397,26 @@ class GameManager:
         move_thief_obj = self.board.move_thief(terrain)
         move_thief_obj['robbed_player'] = -1
         move_thief_obj['stolen_material_id'] = -1
-        if move_thief_obj['response']:
-            current_player = self.agent_manager.actual_player
-            if adjacent_player != -1 and adjacent_player != current_player:
-                for node in self.board.terrain[move_thief_obj['terrain_id']]['contacting_nodes']:
-                    if self.board.nodes[node]['player'] == adjacent_player:
-                        move_thief_obj['stolen_material_id'] = self._steal_from_player(adjacent_player)
-                        move_thief_obj['robbed_player'] = adjacent_player
-                        break
-            elif adjacent_player == current_player:
-                # El agente intentó robarse a sí mismo — buscar otro jugador adyacente
-                for node in self.board.terrain[move_thief_obj['terrain_id']]['contacting_nodes']:
-                    other = self.board.nodes[node]['player']
-                    if other != -1 and other != current_player:
-                        move_thief_obj['stolen_material_id'] = self._steal_from_player(other)
-                        move_thief_obj['robbed_player'] = other
-                        break
-            else:
-                move_thief_obj['error_msg'] = 'No se ha podido robar a otro jugador ya que no hay ninguno'
+        # El robo debe ocurrir independientemente de si el ladrón se movió a la casilla
+        # que pidió el agente o a una casilla aleatoria (cuando el agente pidió la casilla
+        # actual). Antes, si response=False, se saltaba el robo sin avisar.
+        current_player = self.agent_manager.actual_player
+        if adjacent_player != -1 and adjacent_player != current_player:
+            for node in self.board.terrain[move_thief_obj['terrain_id']]['contacting_nodes']:
+                if self.board.nodes[node]['player'] == adjacent_player:
+                    move_thief_obj['stolen_material_id'] = self._steal_from_player(adjacent_player)
+                    move_thief_obj['robbed_player'] = adjacent_player
+                    break
+        elif adjacent_player == current_player:
+            # El agente intentó robarse a sí mismo — buscar otro jugador adyacente
+            for node in self.board.terrain[move_thief_obj['terrain_id']]['contacting_nodes']:
+                other = self.board.nodes[node]['player']
+                if other != -1 and other != current_player:
+                    move_thief_obj['stolen_material_id'] = self._steal_from_player(other)
+                    move_thief_obj['robbed_player'] = other
+                    break
+        elif not move_thief_obj.get('error_msg'):
+            move_thief_obj['error_msg'] = 'No se ha podido robar a otro jugador ya que no hay ninguno'
         return move_thief_obj
 
     def _steal_from_player(self, player):
@@ -532,14 +534,17 @@ class GameManager:
         for road in node['roads']:
             if ((road['node_id'] not in visited_nodes) and (road['player_id'] == player_id or player_id == -1) and
                     (road['player_id'] == node['player'] or node['player'] == -1)):
-                visited_nodes.append(road['node_id'])
 
                 if depth > longest_road_obj['longest_road']:
                     longest_road_obj['longest_road'] = depth
-                    longest_road_obj['player'] = player_id
+                    longest_road_obj['player'] = road['player_id']
 
+                # Se pasa una COPIA de visited_nodes a cada rama. Si compartíamos la lista
+                # por referencia, las ramas laterales consumían nodos del tronco y rutas
+                # bifurcadas en Y/T se contaban mucho más cortas de lo real.
+                branch_visited = visited_nodes + [road['node_id']]
                 longest_road_obj = self.longest_road_calculator(self.board.nodes[road['node_id']], depth + 1,
-                                                                longest_road_obj, road['player_id'], visited_nodes)
+                                                                longest_road_obj, road['player_id'], branch_visited)
         return {'longest_road': longest_road_obj['longest_road'], 'player': longest_road_obj['player']}
 
     def play_development_card(self, player_id, card, winner):
@@ -667,13 +672,19 @@ class GameManager:
                 if road_nodes is not None:
                     built = {'response': False}
                     # Si existe una segunda carretera
-                    if road_nodes['node_id_2'] is not None:
+                    if road_nodes.get('node_id_2') is not None:
                         built_2 = {'response': False}
                     else:
                         built_2 = {'response': True}
 
+                    # Cota de seguridad: si valid_road_nodes devolviese sistemáticamente
+                    # nodos que build_road rechaza, el bucle no terminaba nunca. 50 intentos
+                    # son más que suficientes; si se llega a ese número algo va mal.
+                    max_attempts = 50
+                    attempts = 0
                     # Mientras no estén construidas las carreteras se vuelve a intentar
-                    while not built['response'] or not built_2['response']:
+                    while (not built['response'] or not built_2['response']) and attempts < max_attempts:
+                        attempts += 1
                         # Si ya está construida se ignora
                         if not built['response']:
                             built = self.build_road(player_id, road_nodes['node_id'], road_nodes['road_to'], free=True)
@@ -960,9 +971,11 @@ class GameManager:
                     obj['player'].on_having_more_than_7_materials_when_thief_is_called()
                     self._restore_all_hands(saved)
 
-                    # Descartar con el total ORIGINAL (post-restore)
+                    # Descartar con el total ORIGINAL (post-restore). Regla oficial:
+                    # se descarta la MITAD redondeada HACIA ABAJO. Antes se usaba ceil,
+                    # lo que permitía al jugador conservar una carta extra ilegalmente.
                     total = obj['resources'].get_total()
-                    max_hand = math.ceil(total / 2)
+                    max_hand = math.floor(total / 2)
 
                     while total > max_hand:
                         # Solo intentar descartar materiales que el jugador realmente tiene
@@ -1002,6 +1015,8 @@ class GameManager:
                 answer_object = self.send_trade_to_everyone(commerce_response)
                 commerce_phase_object['answers'] = answer_object
             else:
+                # Oferta inviable: el ofertante no tiene los recursos. No se envía
+                # a los rivales para evitar que procesen una oferta fantasma.
                 commerce_phase_object['inviable'] = True
 
             return commerce_phase_object, winner

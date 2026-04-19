@@ -288,6 +288,11 @@ class Board:
         :param finishing_node: Nodo al que llega la carretera. Debe ser adyacente
         :return: {bool, string}. Envía si se ha podido construir la carretera y en caso de no haberse podido el porqué
         """
+        # Validar que end sea adyacente a start. Sin esto, un agente podía insertar
+        # aristas entre nodos no vecinos y corromper el grafo de carreteras.
+        if end not in self.nodes[start]['adjacent']:
+            return {'response': False, 'error_msg': 'Los nodos indicados no son adyacentes'}
+
         # Comprobamos si ya existe una carretera. Dado que las carreteras se registran en
         # ambas direcciones (como se puede ver al final de la función), solo es necesario
         # comprobar una de las dos direcciones
@@ -407,11 +412,19 @@ class Board:
 
                 if self.nodes[adjacent_node_id]['player'] in [player_id, -1]:
 
+                    # Si el nodo adyacente es un poblado/ciudad del jugador, se permite
+                    # construir desde él aunque no haya todavía una carretera previa.
+                    # Sin esta verificación, un agente sin carretera alguna saliendo de su
+                    # poblado no podía iniciar una red válida.
+                    if self.nodes[adjacent_node_id]['player'] == player_id:
+                        allowed_to_build = True
+
                     # Por cada carretera que haya en el nodo adyacente
                     for road in self.nodes[adjacent_node_id]['roads']:
                         # Si la carretera no es una carretera de vuelta
                         if road['node_id'] != node['id']:
-                            allowed_to_build = road['player_id'] == player_id
+                            if road['player_id'] == player_id:
+                                allowed_to_build = True
                         # En caso de haber una carretera de vuelta, independientemente de qué jugador,
                         # se corta inmediatamente y se prohíbe construir
                         else:
