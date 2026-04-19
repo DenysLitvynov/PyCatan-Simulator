@@ -106,6 +106,11 @@ class GameDirector:
                     player['victory_points'] -= 2
                     break
 
+            # Sin este reset, si la ruta del actual poseedor era interrumpida (poblado rival)
+            # y nadie tenía una ruta estrictamente mayor, el título quedaba "pegado" al
+            # poseedor anterior. Se requieren 5 carreteras (umbral 4) para reclamar.
+            self.game_manager.set_longest_road({'longest_road': 4, 'player': -1})
+
             # Calculamos quien tiene la carretera más larga
             for node in self.game_manager.get_board_nodes():
                 longest_road_obj = self.game_manager.longest_road_calculator(node, 1, {'longest_road': 0, 'player': -1},
@@ -117,6 +122,17 @@ class GameDirector:
             if self.game_manager.get_longest_road()['player'] != -1:
                 self.game_manager.get_players()[self.game_manager.get_longest_road()['player']]['longest_road'] = 1
                 self.game_manager.get_players()[self.game_manager.get_longest_road()['player']]['victory_points'] += 2
+
+        # Auto-revelar cartas de Punto de Victoria ocultas si el total llega a 10+.
+        # Regla oficial: se reclaman al alcanzar 10 puntos. Sin esto, un agente podía llegar
+        # a 10 totales (visible+oculto) y no ganar nunca si no jugaba explícitamente la carta.
+        for player in self.game_manager.get_players():
+            total_vp = player['victory_points'] + player['hidden_victory_points']
+            if total_vp >= 10 and player['hidden_victory_points'] > 0:
+                reveal = min(player['hidden_victory_points'], 10 - player['victory_points'])
+                if reveal > 0:
+                    player['victory_points'] += reveal
+                    player['hidden_victory_points'] -= reveal
 
         vp = {}
         for i in range(4):

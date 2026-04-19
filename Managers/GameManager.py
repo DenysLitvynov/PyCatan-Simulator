@@ -690,9 +690,9 @@ class GameManager:
                                 # Si no se ha podido construir se cambia de carretera a una aleatoria posible
                                 valid_nodes = self.board.valid_road_nodes(player_id)
                                 if len(valid_nodes):
-                                    road_node = random.choice(valid_nodes) 
-                                    road_nodes['node_id'] = valid_nodes[road_node]['starting_node']
-                                    road_nodes['road_to'] = valid_nodes[road_node]['finishing_node']
+                                    chosen_road = random.choice(valid_nodes)
+                                    road_nodes['node_id'] = chosen_road['starting_node']
+                                    road_nodes['road_to'] = chosen_road['finishing_node']
                                 else:
                                     # Si no hay más carreteras posibles se rompe el bucle
                                     card_obj['error_msg'] = 'No hay más nodos válidos para construir una carretera'
@@ -706,9 +706,9 @@ class GameManager:
 
                                 valid_nodes = self.board.valid_road_nodes(player_id)
                                 if len(valid_nodes):
-                                    road_node = random.choice(valid_nodes) 
-                                    road_nodes['node_id_2'] = valid_nodes[road_node]['starting_node']
-                                    road_nodes['road_to_2'] = valid_nodes[road_node]['finishing_node']
+                                    chosen_road = random.choice(valid_nodes)
+                                    road_nodes['node_id_2'] = chosen_road['starting_node']
+                                    road_nodes['road_to_2'] = chosen_road['finishing_node']
                                 else:
                                     card_obj['error_msg'] = 'No hay más nodos válidos para construir una carretera'
                                     break
@@ -1016,6 +1016,15 @@ class GameManager:
             # Capturar recursos ANTES del trade (CommerceManager modifica in-place)
             gives_id = commerce_response['gives']
             receives_id = commerce_response['receives']
+
+            # Regla oficial: no puedes comerciar con el banco un recurso del que no tenga
+            # ni una carta disponible. Sin esta comprobación, el jugador recibía el recurso
+            # igualmente y la contabilidad del banco derivaba creando cartas de la nada.
+            if self.bank.get_from_id(receives_id) < 1:
+                commerce_phase_object['answer'] = False
+                commerce_phase_object['error_msg'] = 'El banco no tiene el recurso solicitado'
+                commerce_phase_object['trade_ratio'] = 4 if harbor_type == HarborConstants.NONE else (3 if harbor_type == HarborConstants.ALL else 2)
+                return commerce_phase_object, winner
 
             if harbor_type == HarborConstants.NONE:
                 trade_ratio = 4
