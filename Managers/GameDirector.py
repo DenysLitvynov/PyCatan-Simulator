@@ -205,11 +205,17 @@ class GameDirector:
                 obj['start_turn'] = start_turn_object
 
                 # Se permite comerciar un máximo de 2 veces con jugadores, pero cualquier cantidad con el puerto.
-                # Si se intenta comercia con un jugador una tercera vez, devuelve None y corta el bucle
+                # Si se intenta comercia con un jugador una tercera vez, devuelve None y corta el bucle.
+                # Cota dura de iteraciones: evita un bucle infinito si un agente nunca devuelve
+                # trade_offer='None' (p. ej. siempre propone trades con puerto/banco sin incrementar
+                # depth). Antes, esto colgaba la partida entera y todo el pool de entrenamiento.
                 commerce_phase_array, depth = [], 1
                 trading = True
+                MAX_COMMERCE_ITERATIONS = 30
+                commerce_iters = 0
 
-                while trading and not winner:
+                while trading and not winner and commerce_iters < MAX_COMMERCE_ITERATIONS:
+                    commerce_iters += 1
                     commerce_phase_object, winner = self.start_commerce_phase(winner, depth,
                                                                               self.game_manager.get_whose_turn_is_it())
                     commerce_phase_array.append(commerce_phase_object)
@@ -220,10 +226,14 @@ class GameDirector:
                 obj['commerce_phase'] = commerce_phase_array
 
                 # Se puede construir cualquier cantidad de veces en un turno mientras tengan materiales. Así que
-                # para evitar un bucle infinito, se corta si se construye 'None' o si fallan al intentar construir
+                # para evitar un bucle infinito, se corta si se construye 'None' o si fallan al intentar construir.
+                # Cota dura adicional por seguridad.
                 build_phase_array = []
                 building = True
-                while building and not winner:
+                MAX_BUILD_ITERATIONS = 30
+                build_iters = 0
+                while building and not winner and build_iters < MAX_BUILD_ITERATIONS:
+                    build_iters += 1
                     build_phase_object, winner = self.start_build_phase(winner,
                                                                         self.game_manager.get_whose_turn_is_it())
                     build_phase_array.append(build_phase_object)
