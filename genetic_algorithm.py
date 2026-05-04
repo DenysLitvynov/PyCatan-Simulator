@@ -45,17 +45,18 @@ RIVAL_AGENTS_PATHS = [
 # HIPERPARÁMETROS
 # =============================================================================
 
-POPULATION_SIZE   = 30    # individuos por generación
-N_GENERATIONS     = 50    # generaciones totales
-GAMES_PER_EVAL    = 16    # partidas por individuo para calcular fitness
-                           # con más rivales necesitamos más partidas para que sea representativo
-ELITE_SIZE        = 4     # mejores que pasan directos a la siguiente generación
-CROSSOVER_PROB    = 0.8   # probabilidad de cruce
-MUTATION_PROB     = 0.15  # probabilidad de mutar cada gen
-MUTATION_STRENGTH = 0.2   # magnitud de la mutación gaussiana
-TOURNAMENT_SIZE   = 3     # tamaño del torneo de selección
+POPULATION_SIZE   = 60    # más diversidad genética
+N_GENERATIONS     = 100   # más generaciones (con parada temprana)
+GAMES_PER_EVAL    = 24    # más partidas = fitness más fiable
+ELITE_SIZE        = 6     # más élite para preservar buenos individuos
+CROSSOVER_PROB    = 0.85  
+MUTATION_PROB     = 0.20  # más mutación para escapar máximos locales
+MUTATION_STRENGTH = 0.25  # mutaciones más grandes
+TOURNAMENT_SIZE   = 4     
 MAX_ROUNDS        = 200   # rondas máximas por partida
-WORKER_RATIO      = 0.75  # porcentaje de cores a usar
+WORKER_RATIO      = 0.90  # en Colab usamos casi todo
+MAX_GENS_SIN_MEJORA = 20  # parada temprana si no mejora en N generaciones
+
 
 OUTPUT_FILE = "best_chromosome.json"
 
@@ -265,6 +266,11 @@ def _save_result(chromosome, fitness, history):
 # =============================================================================
 
 def run_genetic_algorithm():
+    """
+    Ejecuta el algoritmo genético completo y devuelve el mejor cromosoma.
+    Incluye parada temprana si no hay mejora en MAX_GENS_SIN_MEJORA generaciones.
+    Guarda parcialmente tras cada record para no perder progreso.
+    """
     n_workers = max(1, int(os.cpu_count() * WORKER_RATIO))
 
     print(f"\n{'='*62}")
@@ -278,35 +284,39 @@ def run_genetic_algorithm():
         print("ERROR: No se pudo cargar ningun rival. Revisa RIVAL_AGENTS_PATHS.")
         return None, []
 
+    # Solo pasamos los nombres que se cargaron correctamente
+    rival_names = [r.__module__ + '.' + r.__name__ for r in rival_classes]
+
     print(f"\n  Rivales activos:  {len(rival_classes)}")
     print(f"  Poblacion:        {POPULATION_SIZE} individuos")
-    print(f"  Generaciones:     {N_GENERATIONS}")
+    print(f"  Generaciones max: {N_GENERATIONS} (parada si {MAX_GENS_SIN_MEJORA} sin mejora)")
     print(f"  Partidas/eval:    {GAMES_PER_EVAL}")
     print(f"  Workers:          {n_workers}")
     total = POPULATION_SIZE * GAMES_PER_EVAL * N_GENERATIONS
-    print(f"  Partidas totales: ~{total:,}")
+    print(f"  Partidas totales: ~{total:,} (si no hay parada temprana)")
     print(f"{'='*62}\n")
 
-    # Pasamos los nombres (strings) a los workers, no las clases,
-    # porque las clases no siempre son serializables por multiprocessing
-    rival_names = RIVAL_AGENTS_PATHS[:len(rival_classes)]
-
+    # Población inicial aleatoria
     population = [random_chromosome() for _ in range(POPULATION_SIZE)]
 
     history              = []
     best_ever_fitness    = -1.0
     best_ever_chromosome = None
+    gens_sin_mejora      = 0  # contador para parada temprana
 
     start_time = time.time()
 
     for generation in range(N_GENERATIONS):
         gen_start = time.time()
 
-        # Preparamos args para cada worker: (cromosoma, lista_de_nombres, n_games)
+        # Preparamos args para cada worker: (cromosoma, lista_nombres, n_games)
         eval_args = [(crom, rival_names, GAMES_PER_EVAL) for crom in population]
 
+        # Evaluación en paralelo con chunksize para reducir overhead
+        chunksize = max(1, POPULATION_SIZE // (n_workers * 2))
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
-            fitnesses = list(executor.map(evaluate_individual, eval_args))
+            fitnesses = list(executor.map(evaluate_individual, eval_args,
+                                          chunksize=chunksize))
 
         # Estadísticas de la generación
         best_idx      = max(range(len(fitnesses)), key=lambda i: fitnesses[i])
@@ -315,14 +325,16 @@ def run_genetic_algorithm():
         worst_fitness = min(fitnesses)
         best_chrom    = population[best_idx]
 
-        # Guardado parcial si mejoramos el record
+        # ---- Parada temprana + guardado parcial ----
         if best_fitness > best_ever_fitness:
             best_ever_fitness    = best_fitness
             best_ever_chromosome = best_chrom[:]
             _save_result(best_ever_chromosome, best_ever_fitness, history)
+            gens_sin_mejora = 0
             marker = " <-- NUEVO RECORD"
         else:
-            marker = ""
+            gens_sin_mejora += 1
+            marker = f" (sin mejora: {gens_sin_mejora}/{MAX_GENS_SIN_MEJORA})"
 
         history.append({
             'generation':    generation + 1,
@@ -338,11 +350,19 @@ def run_genetic_algorithm():
               f"Worst: {worst_fitness:.4f} | "
               f"{elapsed:.1f}s{marker}")
 
-        # Elitismo: los mejores pasan directos
-        sorted_idx = sorted(range(len(fitnesses)), key=lambda i: fitnesses[i], reverse=True)
+        # ---- Comprobamos parada temprana ----
+        if gens_sin_mejora >= MAX_GENS_SIN_MEJORA:
+            print(f"\n  Parada temprana: {MAX_GENS_SIN_MEJORA} generaciones "
+                  f"consecutivas sin mejorar el record.")
+            print(f"  Mejor fitness alcanzado: {best_ever_fitness:.4f}")
+            break
+
+        # ---- Elitismo: los mejores pasan directos ----
+        sorted_idx = sorted(range(len(fitnesses)),
+                            key=lambda i: fitnesses[i], reverse=True)
         elite = [population[i][:] for i in sorted_idx[:ELITE_SIZE]]
 
-        # Nueva generación por selección + cruce + mutación
+        # ---- Nueva generación por selección + cruce + mutación ----
         new_population = elite[:]
         while len(new_population) < POPULATION_SIZE:
             pa    = tournament_selection(population, fitnesses)
@@ -360,7 +380,8 @@ def run_genetic_algorithm():
 
     print(f"\n{'='*62}")
     print(f"  COMPLETADO en {int(h)}h {int(m)}m {int(s)}s")
-    print(f"  Mejor fitness global: {best_ever_fitness:.4f}")
+    print(f"  Generaciones ejecutadas: {len(history)}/{N_GENERATIONS}")
+    print(f"  Mejor fitness global:    {best_ever_fitness:.4f}")
     print(f"  Mejor cromosoma:")
     for i, g in enumerate(best_ever_chromosome):
         print(f"    [{i:2d}] {g:.3f}")
@@ -369,7 +390,7 @@ def run_genetic_algorithm():
     _save_result(best_ever_chromosome, best_ever_fitness, history)
     print(f"Resultados guardados en: {OUTPUT_FILE}")
     return best_ever_chromosome, history
-
+    
 
 # =============================================================================
 # PUNTO DE ENTRADA

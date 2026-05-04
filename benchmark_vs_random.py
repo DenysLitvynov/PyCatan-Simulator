@@ -6,8 +6,8 @@ import csv
 from Agents.RandomAgent import RandomAgent as ra
 from Managers.GameDirector import GameDirector
 
-n_matches = 1000
-porcentaje_workers = 0.95
+n_matches = 100
+porcentaje_workers = 0.4
 
 agentes_alumnos = [
     "Agents.MiAgente.MiAgente",
