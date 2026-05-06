@@ -1,7 +1,7 @@
 """
-genetic_algorithm.py
+genetic_algorithm_denys.py
 ====================
-Entrena MiAgente usando un algoritmo genético contra TODOS los agentes disponibles.
+Entrena DenysAgent usando un algoritmo genético contra TODOS los agentes disponibles.
 
 Estrategia de entrenamiento:
 - Cada individuo se evalúa jugando contra combinaciones variadas de rivales
@@ -21,11 +21,10 @@ import importlib
 import concurrent.futures
 
 from Managers.GameDirector import GameDirector
-from Agents.MiAgente import MiAgente, CHROMOSOME_SIZE, random_chromosome
+from Agents.DenysAgent import DenysAgent, CHROMOSOME_SIZE, random_chromosome
 
 # =============================================================================
 # POOL DE RIVALES — todos los agentes disponibles
-# Añade o elimina según los que tengas en tu carpeta Agents/
 # =============================================================================
 
 RIVAL_AGENTS_PATHS = [
@@ -45,20 +44,20 @@ RIVAL_AGENTS_PATHS = [
 # HIPERPARÁMETROS
 # =============================================================================
 
-POPULATION_SIZE   = 60    # más diversidad genética
-N_GENERATIONS     = 100   # más generaciones (con parada temprana)
-GAMES_PER_EVAL    = 24    # más partidas = fitness más fiable
-ELITE_SIZE        = 6     # más élite para preservar buenos individuos
-CROSSOVER_PROB    = 0.85  
-MUTATION_PROB     = 0.20  # más mutación para escapar máximos locales
-MUTATION_STRENGTH = 0.25  # mutaciones más grandes
-TOURNAMENT_SIZE   = 4     
+POPULATION_SIZE   = 40    # individuos por generación
+N_GENERATIONS     = 80    # generaciones totales
+GAMES_PER_EVAL    = 20    # partidas por individuo para calcular fitness
+                           # con más rivales necesitamos más partidas para que sea representativo
+ELITE_SIZE        = 5     # mejores que pasan directos a la siguiente generación
+CROSSOVER_PROB    = 0.8   # probabilidad de cruce
+MUTATION_PROB     = 0.15  # probabilidad de mutar cada gen
+MUTATION_STRENGTH = 0.2   # magnitud de la mutación gaussiana
+TOURNAMENT_SIZE   = 4     # tamaño del torneo de selección
 MAX_ROUNDS        = 200   # rondas máximas por partida
-WORKER_RATIO      = 0.90  # en Colab usamos casi todo
-MAX_GENS_SIN_MEJORA = 20  # parada temprana si no mejora en N generaciones
+MAX_GENS_SIN_MEJORA  = 25  # si no mejoramos el fitness en N generaciones, paramos antes para ahorrar tiempo
+WORKER_RATIO      = 0.75  # porcentaje de cores a usar
 
-
-OUTPUT_FILE = "best_chromosome.json"
+OUTPUT_FILE = "best_chromosome_final.json"
 
 # =============================================================================
 # CARGA DE AGENTES RIVALES
@@ -168,7 +167,7 @@ def _play_one_game(cromosoma, position, rivals):
     rivals: lista de 3 clases de agente rivales
     Devuelve (victoria: 0/1, puntos: int, puesto: 1-4)
     """
-    class AgentConCromosoma(MiAgente):
+    class AgentConCromosoma(DenysAgent):
         def __init__(self, agent_id):
             super().__init__(agent_id, cromosoma=cromosoma)
 
@@ -325,13 +324,19 @@ def run_genetic_algorithm():
         worst_fitness = min(fitnesses)
         best_chrom    = population[best_idx]
 
-        # ---- Parada temprana + guardado parcial ----
-        if best_fitness > best_ever_fitness:
-            best_ever_fitness    = best_fitness
-            best_ever_chromosome = best_chrom[:]
-            _save_result(best_ever_chromosome, best_ever_fitness, history)
-            gens_sin_mejora = 0
-            marker = " <-- NUEVO RECORD"
+        # Guardado parcial si mejoramos el record
+        if best_fitness > best_ever_fitness * 0.97:  # candidato prometedor
+            # Re-evaluamos con muchas más partidas para confirmar
+            confirmed_fitness = evaluate_individual(
+                (best_chrom, rival_names, GAMES_PER_EVAL * 4)
+            )
+            if confirmed_fitness > best_ever_fitness:
+                best_ever_fitness    = confirmed_fitness
+                best_ever_chromosome = best_chrom[:]
+                _save_result(best_ever_chromosome, best_ever_fitness, history)
+                marker = f" <-- NUEVO RECORD confirmado ({confirmed_fitness:.4f})"
+            else:
+                marker = f" (candidato rechazado: confirmado={confirmed_fitness:.4f})"
         else:
             gens_sin_mejora += 1
             marker = f" (sin mejora: {gens_sin_mejora}/{MAX_GENS_SIN_MEJORA})"

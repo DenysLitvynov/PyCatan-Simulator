@@ -10,7 +10,7 @@ n_matches = 100
 porcentaje_workers = 0.4
 
 agentes_alumnos = [
-    "Agents.MiAgente.MiAgente",
+    "Agents.DenysAgent.DenysAgent",
     "Agents.AdrianHerasAgent.AdrianHerasAgent",
     "Agents.CarlesZaidaAgent.CarlesZaidaAgent",
     "Agents.DaniEduAgent.DaniEduAgent"

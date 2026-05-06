@@ -41,32 +41,35 @@ def random_chromosome():
     """Genera un cromosoma aleatorio con valores entre 0 y 1."""
     return [random.random() for _ in range(CHROMOSOME_SIZE)]
 
+# Cromosoma óptimo encontrado por el algoritmo genético
+# Entrenamiento: 50 generaciones, población 30, vs 8 agentes rivales
+BEST_CHROMOSOME = [
+    0.9608712805805583,  # [0]  w_city      — preferencia por construir ciudad
+    0.34242064371581155,  # [1]  w_town      — preferencia por construir pueblo
+    0.5011850695967629,  # [2]  w_road      — preferencia por construir carretera
+    0.14077714466125885,  # [3]  w_card      — preferencia por comprar carta
+    0.5840360379031017,  # [4]  w_prob      — peso probabilidad dado en nodos
+    0.9832088048330433,  # [5]  w_resource  — peso tipo recurso en nodos
+    0.5329762375996745,  # [6]  w_coastal   — penalización nodos costeros
+    0.19479199792941548,  # [7]  w_thief_prob    — peso probabilidad al mover ladrón
+    0.948156464024157,  # [8]  w_thief_vp      — peso VP enemigo al mover ladrón
+    0.6418778094786243,  # [9]  w_thief_noself  — evitar propios terrenos
+    0.6677909948632736,  # [10] w_trade_bank    — umbral comercio con banco
+    0.5830316295626119,  # [11] w_trade_offer   — agresividad proposición trades
+    0.0,  # [12] w_trade_accept  — umbral aceptación ofertas
+    0.0011349230966645196,  # [13] w_discard       — estrategia de descarte
+    0.4106830955033659,  # [14] w_knight        — umbral jugar caballero
+    0.6072985982548436,  # [15] w_buy_card      — modificador preferencia cartas
+]
 
-class MiAgente(AgentInterface):
-    """
-    Agente entrenado con algoritmo genético.
-    Todas las decisiones están parametrizadas por un cromosoma de 16 genes.
-    """
-
+class DenysAgent(AgentInterface):
+    
     def __init__(self, agent_id, cromosoma=None):
         super().__init__(agent_id)
-        
-        if cromosoma is not None:
-            self.cromosoma = cromosoma
-        else:
-            # Intenta cargar el mejor cromosoma entrenado
-            json_path = os.path.join(os.path.dirname(__file__), '..', 'best_chromosome.json')
-            if os.path.exists(json_path):
-                with open(json_path) as f:
-                    data = json.load(f)
-                self.cromosoma = data['best_chromosome']
-            else:
-                # Fallback: pesos neutros
-                self.cromosoma = [0.5] * CHROMOSOME_SIZE
-        
+        # Si no se pasa cromosoma externo, usa el entrenado
+        self.cromosoma = cromosoma if cromosoma is not None else BEST_CHROMOSOME[:]
         self._parse_chromosome()
         self.town_count = 0
-        
     
     def _parse_chromosome(self):
         """Asigna cada gen a una variable con nombre legible."""
@@ -383,10 +386,6 @@ class MiAgente(AgentInterface):
         return None
     
     def on_commerce_response(self, board_instance, commerce_offer):
-        """
-        ESTA ES LA QUE TE FALTA Y HACE QUE PETE EL PROGRAMA.
-        El motor la llama para confirmar qué material quieres recibir.
-        """
         needed = self._get_most_needed_material()
         # Si no sabemos qué queremos, pedimos Cereal (0) por defecto para no devolver None
         if needed is None:
@@ -565,10 +564,6 @@ class MiAgente(AgentInterface):
     # =========================================================================
 
     def _get_most_needed_material(self):
-        """
-        Versión corregida: si no falta nada urgente, devuelve el material que 
-        menos tengamos para no romper el motor con un None.
-        """
         # ¿Qué nos falta para ciudad? (3 mineral + 2 cereal)
         if self.town_count > 0:
             if self.hand.resources.mineral < 3:
@@ -586,7 +581,6 @@ class MiAgente(AgentInterface):
             if self.hand.resources.get_from_id(mat) < needed:
                 return mat
 
-        # --- AQUÍ ESTABA EL ERROR ---
         # En lugar de return None, devolvemos el material del que tengamos menos cantidad
         # así el motor siempre recibe un entero válido.
         mats = [0, 1, 2, 3, 4]
