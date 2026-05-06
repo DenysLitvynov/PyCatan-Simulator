@@ -32,7 +32,6 @@ logs/
 
 # Resultados de entrenamiento y ficheros personales
 resultados_*/
-best_chromosome*.json
 *_training_log*
 training_output.log
 entrenador_*.py
